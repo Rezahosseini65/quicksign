@@ -1,0 +1,8 @@
+-r base.txt
+
+daphne
+drf-spectacular
+django-debug-toolbar
+Faker
+black
+flake8

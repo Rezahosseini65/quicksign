@@ -1,0 +1,95 @@
+services:
+  db:
+    image: postgres:15.4
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_DB=quicksign
+      - POSTGRES_USER=quicksign
+      - POSTGRES_PASSWORD=123@456
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quicksign -d quicksign"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:alpine
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  app:
+    user: "quicksign"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: /py/bin/python manage.py runserver 0.0.0.0:8000
+    environment:
+      DATABASE_URL: psql://postgres:postgres@db:5432/quicksign
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      PYTHONPATH: /py/lib/python3.12/site-packages
+    volumes:
+      - .:/app
+    ports:
+      - 8000:8000
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  celery_worker:
+    build: .
+    user: "quicksign"
+    command: /py/bin/celery -A quicksign worker --loglevel=info
+    volumes:
+      - .:/app
+      - /var/log/celery:/var/log/celery
+    environment:
+      DATABASE_URL: psql://postgres:postgres@db:5432/quicksign
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  beats:
+    user: "quicksign"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: /py/bin/celery -A quicksign beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      DATABASE_URL: psql://postgres:postgres@db:5432/quicksign
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - 6379:6379
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres_data:
+  redis-data:
