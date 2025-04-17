@@ -1,7 +1,14 @@
+import logging
+import secrets
 from datetime import timedelta
 
 from django.core.cache import cache
 
+from redis.lock import Lock
+
+from quicksign.apps.users.tasks import send_verification_code
+
+logger = logging.getLogger(__name__)
 
 class BlockService:
     """
@@ -85,3 +92,70 @@ class BlockService:
             'remaining_attempts': max(0, 3 - attempts),
             'block_time_left': block_time_left
         }
+
+
+class OTPService:
+
+    @staticmethod
+    def generate_code(phone_number):
+        """
+        Generate a random 6-digit verification code.
+        Replace this with your actual code generation logic.
+        """
+        code = str(secrets.randbelow(900000) + 100000)
+        cache.set(
+            key = f"verification_code_{phone_number}",
+            value=code,
+            timeout=120
+        )
+        return code
+
+    @staticmethod
+    def send_otp_code(phone_number):
+        """
+        Sends OTP code to user and stores session data in cache.
+        """
+        verification_code = OTPService.generate_code(phone_number)
+        send_verification_code.delay(phone_number=phone_number, verification_code=verification_code )
+        return {
+            "data": {
+                "status": "success",
+                "message": f"Verification code sent to your {phone_number}",
+                "retry_after": 60
+            }
+        }
+
+    @staticmethod
+    def validate_code(phone_number, code):
+        """
+        Validates a verification code for a user by checking Redis.
+
+        Args:
+            phone_number (str): The user's unique ID.
+            code (str): The code to validate.
+
+        Returns:
+            bool: True if the code matches and is valid, False otherwise.
+
+        Exceptions:
+            Handles Redis errors and logs them.
+        """
+        try:
+            redis_client = cache.client.get_client()
+
+            look = Lock(
+                redis_client,
+                name=f"otp_lock_{phone_number}",
+                timeout=5
+            )
+
+            with look:
+                stored_code = cache.get(f"verification_code_{phone_number}")
+                if stored_code == code:
+                    cache.delete(f"verification_code_{phone_number}")
+                    return True
+                return False
+
+        except Exception as e:
+            logger.info(f"Redis Error: {str(e)}")
+            return False
