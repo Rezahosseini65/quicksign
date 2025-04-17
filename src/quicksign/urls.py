@@ -12,4 +12,5 @@ doc_urlpatterns = [
 urlpatterns = [
     path('secret/', admin.site.urls),
     path('__debug__/', include("debug_toolbar.urls")),
+    path('api/user/', include('quicksign.apps.users.urls')),
 ]+doc_urlpatterns
