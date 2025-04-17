@@ -1,9 +1,11 @@
-from datetime import timedelta
+from unittest.mock import patch, MagicMock
 
 from django.test import TestCase
 from django.core.cache import cache
 
-from quicksign.utils.services import BlockService
+from quicksign.utils.services import BlockService, OTPService
+from quicksign.apps.users.tasks import send_verification_code
+
 
 
 class BlockServiceTestCase(TestCase):
@@ -90,4 +92,64 @@ class BlockServiceTestCase(TestCase):
             BlockService.unblock_user()
 
     def tearDown(self):
-        cache.clear()  
+        cache.clear()
+
+
+class OTPServiceTestCase(TestCase):
+    def setUp(self):
+        self.phone_number = "+989123456789"
+        self.valid_code = "123456"
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    @patch("secrets.randbelow")
+    def test_generate_code(self, mock_randbelow):
+        """تست تولید کد و ذخیره آن در کش"""
+        mock_randbelow.return_value = 23456
+        code = OTPService.generate_code(self.phone_number)
+
+        self.assertEqual(code, "123456")
+        self.assertEqual(cache.get(f"verification_code_{self.phone_number}"), "123456")
+
+    @patch("quicksign.apps.users.tasks.send_verification_code.delay")
+    def test_send_otp_code(self, mock_send_verification):
+        """تست ارسال کد OTP"""
+        mock_send_verification.return_value = None
+        result = OTPService.send_otp_code(self.phone_number)
+
+        self.assertEqual(result["data"]["status"], "success")
+        self.assertIn(self.phone_number, result["data"]["message"])
+        mock_send_verification.assert_called_once_with(
+            phone_number=self.phone_number,
+            verification_code=cache.get(f"verification_code_{self.phone_number}")
+        )
+
+    def test_validate_code_correct(self):
+        """تست صحت سنجی کد صحیح"""
+        cache.set(f"verification_code_{self.phone_number}", self.valid_code, timeout=120)
+
+        is_valid = OTPService.validate_code(self.phone_number, self.valid_code)
+        print(cache.get(f"verification_code_{self.phone_number}"))
+        self.assertTrue(is_valid)
+        self.assertIsNone(cache.get(f"verification_code_{self.phone_number}"))
+
+    def test_validate_code_incorrect(self):
+        """تست صحت سنجی کد نادرست"""
+        cache.set(f"verification_code_{self.phone_number}", self.valid_code, timeout=120)
+
+        is_valid = OTPService.validate_code(self.phone_number, "654321")
+
+        self.assertFalse(is_valid)
+
+    @patch("quicksign.utils.services.logger.info")
+    def test_validate_code_redis_error(self, mock_logger):
+        """تست خطای ردیس در هنگام صحت سنجی"""
+        with patch("django.core.cache.cache.get", side_effect=Exception("Redis Error")):
+            is_valid = OTPService.validate_code(self.phone_number, self.valid_code)
+
+            self.assertFalse(is_valid)
+            mock_logger.assert_called_once_with("Redis Error: Redis Error")
+
+
