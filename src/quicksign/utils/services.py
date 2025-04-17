@@ -4,11 +4,23 @@ from datetime import timedelta
 
 from django.core.cache import cache
 
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from redis.lock import Lock
 
 from quicksign.apps.users.tasks import send_verification_code
 
 logger = logging.getLogger(__name__)
+
+def get_token_for_user(user):
+    """
+    Generate JWT refresh and access tokens for a given user.
+    """
+    refresh = RefreshToken.for_user(user)
+    return {
+        "refresh":str(refresh),
+        "access":str(refresh.access_token)
+    }
 
 class BlockService:
     """
