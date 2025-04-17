@@ -49,7 +49,7 @@ class BlockService:
         block_duration = timedelta(hours=1)
         cache.set(f"phone_blocked_{phone_number}", True, timeout=block_duration.total_seconds())
         cache.set(f"ip_blocked_{ip_address}", True, timeout=block_duration.total_seconds())
-        cache.set(f"failed_attempts_{phone_number}", 3, timeout=block_duration.total_seconds())
+        cache.set(f"failed_attempts_{ip_address}", 3, timeout=block_duration.total_seconds())
 
     @staticmethod
     def unblock_user(phone_number=None, ip_address=None):
@@ -61,27 +61,27 @@ class BlockService:
 
         cache.delete(f"phone_blocked_{phone_number}")
         cache.delete(f"ip_blocked_{ip_address}")
-        cache.delete(f"failed_attempts_{phone_number}")
+        cache.delete(f"failed_attempts_{ip_address}")
 
     @staticmethod
     def increment_attempts(phone_number, ip_address):
         """
         Increment failed attempts counter and block if exceeds limit.
         """
-        attempts = cache.get(f"failed_attempts_{phone_number}", 0)
+        attempts = cache.get(f"failed_attempts_{ip_address}", 0)
         attempts += 1
-        cache.set(f"failed_attempts_{phone_number}", attempts, timeout=3600)
+        cache.set(f"failed_attempts_{ip_address}", attempts, timeout=3600)
 
         if attempts >= 3:
             BlockService.block_user(phone_number, ip_address)
         return attempts
 
     @staticmethod
-    def reset_attempts(phone_number):
+    def reset_attempts(ip_address):
         """
         Reset failed attempts counter for given phone number.
         """
-        cache.delete(f"failed_attempts_{phone_number}")
+        cache.delete(f"failed_attempts_{ip_address}")
 
     @staticmethod
     def get_block_status(phone_number=None, ip_address=None):
@@ -89,7 +89,7 @@ class BlockService:
         Get current block status including remaining attempts and block time.
         """
         is_blocked = BlockService.is_blocked(phone_number, ip_address)
-        attempts = cache.get(f"failed_attempts_{phone_number}", 0) if phone_number else 0
+        attempts = cache.get(f"failed_attempts_{ip_address}", 0) if ip_address else 0
 
         block_time_left = 0
         if is_blocked:
