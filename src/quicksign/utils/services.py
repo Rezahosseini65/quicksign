@@ -70,6 +70,7 @@ class BlockService:
         """
         attempts = cache.get(f"failed_attempts_{ip_address}", 0)
         attempts += 1
+
         cache.set(f"failed_attempts_{ip_address}", attempts, timeout=3600)
 
         if attempts >= 3:
@@ -89,9 +90,9 @@ class BlockService:
         Get current block status including remaining attempts and block time.
         """
         is_blocked = BlockService.is_blocked(phone_number, ip_address)
-        attempts = cache.get(f"failed_attempts_{ip_address}", 0) if ip_address else 0
-
+        attempts = cache.get(f"failed_attempts_{ip_address}", 0)
         block_time_left = 0
+
         if is_blocked:
             if phone_number:
                 block_time_left = cache.ttl(f"phone_blocked_{phone_number}")
@@ -101,7 +102,7 @@ class BlockService:
 
         return {
             'is_blocked': is_blocked,
-            'remaining_attempts': max(0, 3 - attempts),
+            'remaining_attempts': max(0, (3 - attempts)),
             'block_time_left': block_time_left
         }
 
@@ -163,7 +164,6 @@ class OTPService:
             with look:
                 stored_code = cache.get(f"verification_code_{phone_number}")
                 if stored_code == code:
-                    cache.delete(f"verification_code_{phone_number}")
                     return True
                 return False
 

@@ -1,16 +1,23 @@
+import logging
+
 from django.contrib.auth import authenticate
+from django.db import IntegrityError
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from .serializers import PhoneNumberCheckSerializer, LoginUserSerializer
 from .models import CustomUser
 from .throttles import PhoneCheckThrottle
+from .serializers import (PhoneNumberCheckSerializer,
+                          UserLoginSerializer,
+                          UserRegisterSerializer,
+                          UserProfileSerializer)
 from quicksign.utils.services import BlockService, get_token_for_user, OTPService
 
 # Create your views here.
 
+logger=logging.getLogger(__name__)
 
 class PhoneNumberCheckView(APIView):
     throttle_classes = [PhoneCheckThrottle]
@@ -69,10 +76,11 @@ class PhoneNumberCheckView(APIView):
 
 
 class UserLoginView(APIView):
+
     def post(self, request, *args, **kwargs):
         ip_address = request.META.get('REMOTE_ADDR')
 
-        serializer = LoginUserSerializer(data=request.data)
+        serializer = UserLoginSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -110,3 +118,54 @@ class UserLoginView(APIView):
 
         return Response(get_token_for_user(user), status=status.HTTP_200_OK)
 
+
+class UserRegisterView(APIView):
+    """
+    User registration endpoint with two-step validation:
+    1. OTP verification
+    2. Profile creation
+    """
+    def post(self, request, *args, **kwargs):
+        ip_address = request.META.get('REMOTE_ADDR')
+        # Step 1: Verify OTP
+        auth_serializer = UserRegisterSerializer(data=request.data,context={"request": request})
+        auth_serializer.is_valid(raise_exception=True)
+
+        phone_number = auth_serializer.validated_data["phone_number"]
+
+        # Step 2: Create profile
+        profile_serializer = UserProfileSerializer(data=request.data,context={'phone_number': phone_number})
+        profile_serializer.is_valid(raise_exception=True)
+
+        try:
+            user = CustomUser.objects.create_user(
+                phone_number=phone_number,
+                email=profile_serializer.validated_data["email"],
+                first_name=profile_serializer.validated_data["first_name"],
+                last_name=profile_serializer.validated_data["last_name"],
+                password=profile_serializer.validated_data["password"]
+            )
+
+            BlockService.reset_attempts(ip_address)
+            return Response(
+                data=get_token_for_user(user),
+                status=status.HTTP_201_CREATED
+            )
+
+        except IntegrityError as e:
+            return Response(
+                {
+                    "code": "user_creation_failed",
+                    "detail": str(e)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"User registration failed: {str(e)}")
+            return Response(
+                {
+                    "code": "server_error",
+                    "detail": "Internal server error"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
