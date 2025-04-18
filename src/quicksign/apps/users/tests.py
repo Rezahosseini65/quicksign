@@ -1,7 +1,9 @@
 import json
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
+from django.core.cache import cache
 
 from rest_framework.test import APITestCase, APIRequestFactory
 from rest_framework import status
@@ -184,3 +186,103 @@ class BlockServiceIntegrationTest(TestCase):
         is_blocked = BlockService.is_blocked(self.phone, self.ip)
         self.assertIsInstance(is_blocked, bool)
 
+
+class UserLoginViewTests(APITestCase):
+    def setUp(self):
+        self.login_url = reverse('login-user')
+        self.user = CustomUser.objects.create_user(
+            phone_number='+989123456789',
+            password='testpass123',
+            first_name='Test',
+            last_name='User'
+        )
+
+        # Sample valid data
+        self.valid_data = {
+            'phone_number': '+989123456789',
+            'password': 'testpass123'
+        }
+
+        # Sample invalid data
+        self.invalid_password_data = {
+            'phone_number': '+989123456789',
+            'password': 'wrongpass'
+        }
+
+        self.invalid_phone_data = {
+            'phone_number': '+989000000000',
+            'password': 'testpass123'
+        }
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_successful_login(self):
+        """Test successful login returns tokens"""
+        response = self.client.post(self.login_url, self.valid_data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+
+    def test_invalid_credentials(self):
+        """Test login with wrong password"""
+        response = self.client.post(self.login_url, self.invalid_password_data)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['detail'], 'Invalid credentials')
+        self.assertEqual(response.data['remaining_attempts'], 2)
+
+    def test_nonexistent_user(self):
+        """Test login with non-existent phone number"""
+        response = self.client.post(self.login_url, self.invalid_phone_data)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['detail'], 'Invalid credentials')
+
+    def test_block_after_multiple_attempts(self):
+        """Test account gets blocked after 3 failed attempts"""
+        for i in range(3):
+            remaining = 2 - i
+            response = self.client.post(self.login_url, self.invalid_password_data)
+            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+            if remaining > 0:
+                self.assertIn(f'Account will be blocked after {remaining} more failed attempts',
+                              response.data['message'])
+            else:
+                self.assertIn('Account blocked for 1 hour', response.data['message'])
+
+        # Fourth attempt should be blocked
+        response = self.client.post(self.login_url, self.invalid_password_data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('Account temporarily blocked due to too many attempts',
+                      response.data['detail'])
+
+    def test_block_reset_after_successful_login(self):
+        """Test failed attempts counter resets after successful login"""
+        # First failed attempt
+        self.client.post(self.login_url, self.invalid_password_data)
+
+        # Then successful login
+        response = self.client.post(self.login_url, self.valid_data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Failed attempts should be reset
+        response = self.client.post(self.login_url, self.invalid_password_data)
+        self.assertEqual(response.data['remaining_attempts'], 2)
+
+    def test_invalid_serializer_data(self):
+        """Test login with invalid phone number format"""
+        invalid_data = {
+            'phone_number': 'invalid-phone',
+            'password': 'testpass123'
+        }
+        response = self.client.post(self.login_url, invalid_data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('phone_number', response.data)
+
+    @patch('quicksign.utils.services.BlockService.is_blocked', return_value=True)
+    @patch('quicksign.utils.services.BlockService.get_block_status',
+           return_value={'block_time_left': 1800})  # 30 minutes
+    def test_blocked_user_login(self, mock_get_status, mock_is_blocked):
+        """Test blocked user can't login"""
+        response = self.client.post(self.login_url, self.valid_data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data['remaining_time'], '30 minutes')
