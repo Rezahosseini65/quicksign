@@ -1,17 +1,17 @@
 import json
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.core.cache import cache
 
-from rest_framework.test import APITestCase, APIRequestFactory
+from rest_framework.test import APITestCase, APIRequestFactory, APIClient
 from rest_framework import status
 
 from .models import CustomUser
 from .serializers import PhoneNumberCheckSerializer
 from .views import PhoneNumberCheckView
-from quicksign.utils.services import BlockService
+from quicksign.utils.services import BlockService, OTPService
 
 # Create your tests here.
 
@@ -286,3 +286,86 @@ class UserLoginViewTests(APITestCase):
         response = self.client.post(self.login_url, self.valid_data)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data['remaining_time'], '30 minutes')
+
+
+class UserRegisterViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.factory = RequestFactory()
+        self.url = reverse('register-user')
+        self.valid_data = {
+            'phone_number': '+989123456789',
+            'code': '123456',
+            'email': 'test@example.com',
+            'first_name': 'test',
+            'last_name': 'user',
+            'password': 'securepassword123',
+            'confirm_password':'securepassword123'
+        }
+        cache.clear()
+
+    def test_successful_registration(self):
+        # Mock OTP validation
+        with patch.object(OTPService, 'validate_code', return_value=True):
+            response = self.client.post(self.url, self.valid_data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+
+        # Verify user was created
+        user = CustomUser.objects.get(phone_number=self.valid_data['phone_number'])
+        self.assertEqual(user.email, self.valid_data['email'])
+
+    def test_invalid_otp(self):
+        # Mock invalid OTP
+        with patch.object(OTPService, 'validate_code', return_value=False):
+            response = self.client.post(self.url, self.valid_data, format='json')
+
+        self.assertEqual(response.data['code'][0], 'invalid_otp')
+
+    def test_block_after_multiple_failed_attempts(self):
+        # Test blocking after 3 failed attempts
+        with patch.object(OTPService, 'validate_code', return_value=False):
+            for _ in range(3):
+                response = self.client.post(self.url, self.valid_data, format='json')
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+            # Fourth attempt should be blocked
+            response = self.client.post(self.url, self.valid_data, format='json')
+
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertEqual(response.data['code'][0], 'account_blocked')
+
+    def test_invalid_profile_data(self):
+        invalid_data = self.valid_data.copy()
+        invalid_data['email'] = 'invalid-email'
+
+        with patch.object(OTPService, 'validate_code', return_value=True):
+            response = self.client.post(self.url, invalid_data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data)
+
+    def test_reset_attempts_after_success(self):
+        # First make 2 failed attempts
+        with patch.object(OTPService, 'validate_code', return_value=False):
+            for _ in range(2):
+                self.client.post(self.url, self.valid_data, format='json')
+
+        # Then successful attempt
+        with patch.object(OTPService, 'validate_code', return_value=True):
+            response = self.client.post(self.url, self.valid_data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # Then successful attempt
+        with patch.object(OTPService, 'validate_code', return_value=True):
+            response = self.client.post(self.url, self.valid_data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # Verify attempts were reset
+        ip = '127.0.0.1'
+        attempts = cache.get(f"failed_attempts_{ip}", 0)
+        self.assertEqual(attempts, 0)
