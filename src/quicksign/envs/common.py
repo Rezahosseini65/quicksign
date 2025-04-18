@@ -32,6 +32,8 @@ THIRD_PARTY_APPS = [
     'rest_framework_simplejwt',
     'django_filters',
     'corsheaders',
+    'django_celery_beat',
+    'django_celery_results',
 ]
 
 
@@ -160,6 +162,9 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'DEFAULT_THROTTLE_RATES': {
+        'phone_check_request':'1/minute'
+    },
 }
 
 #CELERY

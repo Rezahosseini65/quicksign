@@ -125,13 +125,12 @@ class OTPService:
     @staticmethod
     def send_otp_code(phone_number):
         """
-        Sends OTP code to user and stores session data in cache.
+        Sends OTP code to user.
         """
         verification_code = OTPService.generate_code(phone_number)
         send_verification_code.delay(phone_number=phone_number, verification_code=verification_code )
         return {
             "data": {
-                "status": "success",
                 "message": f"Verification code sent to your {phone_number}",
                 "retry_after": 60
             }

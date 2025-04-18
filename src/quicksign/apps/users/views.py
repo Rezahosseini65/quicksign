@@ -6,12 +6,15 @@ from rest_framework import status
 
 from .serializers import PhoneNumberCheckSerializer, LoginUserSerializer
 from .models import CustomUser
-from quicksign.utils.services import BlockService, get_token_for_user
+from .throttles import PhoneCheckThrottle
+from quicksign.utils.services import BlockService, get_token_for_user, OTPService
 
 # Create your views here.
 
 
 class PhoneNumberCheckView(APIView):
+    throttle_classes = [PhoneCheckThrottle]
+
     def post(self, request, *args, **kwargs):
         """
         Check the status of a user's mobile number
@@ -54,11 +57,12 @@ class PhoneNumberCheckView(APIView):
                 status=status.HTTP_200_OK
             )
         except CustomUser.DoesNotExist:
+            otp_response = OTPService.send_otp_code(phone_number)
             return Response(
                 {
                     "status": "not_registered",
                     "phone_number": phone_number,
-                    "message": f"User {phone_number} needs to register"
+                    **otp_response
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
