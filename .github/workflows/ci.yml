@@ -21,11 +21,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install docker-compose -y
+      - name: Create .env file for testing
+        run: |
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" > src/quicksign/.env
+          echo "DATABASE_URL=${{ secrets.TEST_DATABASE_URL }}" >> src/quicksign/.env
+          echo "DEBUG=True" >> src/quicksign/.env
 
       - name: Build and start services
         run: |
           docker-compose -f docker-compose.yaml up -d --build
-          cp .env.example src/quicksign/.env
+          
 
       - name: Wait for services to be ready
         run: sleep 30
