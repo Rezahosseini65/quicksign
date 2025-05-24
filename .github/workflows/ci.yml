@@ -25,6 +25,7 @@ jobs:
       - name: Build and start services
         run: |
           docker-compose -f docker-compose.yaml up -d --build
+          cp .env.example src/quicksign/.env
 
       - name: Wait for services to be ready
         run: sleep 30
