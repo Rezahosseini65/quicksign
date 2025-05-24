@@ -23,8 +23,6 @@ services:
 
   app:
     user: "quicksign"
-    env_file:
-      - ./src/quicksign/.env
     build:
       context: .
       dockerfile: Dockerfile
