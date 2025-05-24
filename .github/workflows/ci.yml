@@ -44,7 +44,7 @@ jobs:
 
       - name: Run flake8 linting
         run: |
-          docker-compose run --rm --user root app -R quicksign:quicksign sh -c "pip install flake8 && flake8 src/ --count --show-source --statistics
+          docker-compose run --rm --user root app sh -c "chown -R quicksign:quicksign /app/src && pip install flake8 && flake8 src/ --count --show-source --statistics"
 
       - name: Stop services
         if: always()
