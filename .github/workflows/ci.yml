@@ -1,0 +1,41 @@
+name: Quicksign CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      docker:
+        image: docker:24.0.5-dind
+        privileged: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install docker-compose -y
+
+      - name: Build and start services
+        run: |
+          docker-compose -f docker-compose.yaml up -d --build
+
+      - name: Wait for services to be healthy
+        run: |
+          sleep 30  
+
+      - name: Run tests inside app container
+        run: |
+          docker-compose exec -T app /py/bin/python manage.py test
+
+      - name: Stop services
+        if: always()
+        run: docker-compose down
