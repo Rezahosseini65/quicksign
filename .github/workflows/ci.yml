@@ -36,7 +36,10 @@ jobs:
         run: sleep 30
 
       - name: Run tests using docker-compose run
-        run: docker-compose run --rm app /py/bin/python src/manage.py test src/
+        run: |
+          docker-compose run --rm app /py/bin/python src/manage.py makemigrations users
+          docker-compose run --rm app /py/bin/python src/manage.py migrate
+          docker-compose run --rm app /py/bin/python src/manage.py test src/
 
 
 
