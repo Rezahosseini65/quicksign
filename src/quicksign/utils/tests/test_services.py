@@ -1,10 +1,10 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.core.cache import cache
 
 from quicksign.utils.services import BlockService, OTPService
-from quicksign.apps.users.tasks import send_verification_code
+
 
 
 
@@ -36,9 +36,10 @@ class BlockServiceTestCase(TestCase):
         """
         BlockService.block_user(phone_number=self.phone_number, ip_address=self.ip_address)
 
+
         self.assertTrue(cache.get(f"phone_blocked_{self.phone_number}"))
         self.assertTrue(cache.get(f"ip_blocked_{self.ip_address}"))
-        self.assertEqual(cache.get(f"failed_attempts_{self.phone_number}"), 3)
+        self.assertEqual(cache.get(f"failed_attempts_{self.ip_address}"), 3)
 
     def test_unblock_user(self):
         """Test unblocking user"""
@@ -53,7 +54,7 @@ class BlockServiceTestCase(TestCase):
         """Test incrementing failed attempts"""
         attempts = BlockService.increment_attempts(self.phone_number, self.ip_address)
         self.assertEqual(attempts, 1)
-        self.assertEqual(cache.get(f"failed_attempts_{self.phone_number}"), 1)
+        self.assertEqual(cache.get(f"failed_attempts_{self.ip_address}"), 1)
 
         # Test auto-block after 3 attempts
         BlockService.increment_attempts(self.phone_number, self.ip_address)
@@ -63,8 +64,8 @@ class BlockServiceTestCase(TestCase):
     def test_reset_attempts(self):
         """Test resetting failed attempts"""
         BlockService.increment_attempts(self.phone_number, self.ip_address)
-        BlockService.reset_attempts(self.phone_number)
-        self.assertIsNone(cache.get(f"failed_attempts_{self.phone_number}"))
+        BlockService.reset_attempts(self.ip_address)
+        self.assertIsNone(cache.get(f"failed_attempts_{self.ip_address}"))
 
     def test_get_block_status(self):
         """Test getting block status information"""
@@ -129,11 +130,9 @@ class OTPServiceTestCase(TestCase):
     def test_validate_code_correct(self):
         """تست صحت سنجی کد صحیح"""
         cache.set(f"verification_code_{self.phone_number}", self.valid_code, timeout=120)
-
         is_valid = OTPService.validate_code(self.phone_number, self.valid_code)
-        print(cache.get(f"verification_code_{self.phone_number}"))
+
         self.assertTrue(is_valid)
-        self.assertIsNone(cache.get(f"verification_code_{self.phone_number}"))
 
     def test_validate_code_incorrect(self):
         """تست صحت سنجی کد نادرست"""

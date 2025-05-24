@@ -348,14 +348,23 @@ class UserRegisterViewTests(TestCase):
         self.assertIn('email', response.data)
 
     def test_reset_attempts_after_success(self):
+        valid_data = {
+            'phone_number': '+989123456788',
+            'code': '123454',
+            'email': 'test1@example.com',
+            'first_name': 'test1',
+            'last_name': 'user1',
+            'password': 'securepassword123',
+            'confirm_password': 'securepassword123'
+        }
         # First make 2 failed attempts
         with patch.object(OTPService, 'validate_code', return_value=False):
             for _ in range(2):
-                self.client.post(self.url, self.valid_data, format='json')
+                self.client.post(self.url, valid_data, format='json')
 
         # Then successful attempt
         with patch.object(OTPService, 'validate_code', return_value=True):
-            response = self.client.post(self.url, self.valid_data, format='json')
+            response = self.client.post(self.url, valid_data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
