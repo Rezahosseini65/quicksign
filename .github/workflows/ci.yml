@@ -44,7 +44,7 @@ jobs:
 
       - name: Run flake8 linting
         run: |
-          docker-compose run --rm app sh -c "pip install flake8 && flake8 src/ --count --show-source --statistics"
+          docker-compose run --rm app /py/bin/python src/manage.py flake8 src/
 
       - name: Stop services
         if: always()
