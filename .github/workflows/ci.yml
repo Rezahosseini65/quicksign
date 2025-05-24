@@ -1,4 +1,4 @@
-name: Quicksign CI
+name: Quicksign CI/CD
 
 on:
   push:
