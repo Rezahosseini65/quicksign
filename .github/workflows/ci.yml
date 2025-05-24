@@ -35,3 +35,8 @@ jobs:
       - name: Stop services
         if: always()
         run: docker-compose down
+
+      - name: Show logs if app container fails
+        if: failure()
+        run: docker-compose logs app
+
