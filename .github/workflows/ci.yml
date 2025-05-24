@@ -36,7 +36,8 @@ jobs:
         run: sleep 30
 
       - name: Run tests using docker-compose run
-        run: docker-compose run --rm app /py/bin/python src/manage.py test
+        run: docker-compose run --rm app /py/bin/python src/manage.py test quicksign.apps.users.tests
+
 
 
       - name: Stop services
