@@ -132,6 +132,7 @@ class OTPService:
         send_verification_code.delay(phone_number=phone_number, verification_code=verification_code )
         return {
             "data": {
+                "status":"success",
                 "message": f"Verification code sent to your {phone_number}",
                 "retry_after": 60
             }
